@@ -1,0 +1,134 @@
+---
+title: "Shots_Data"
+author: "Abdoul Fall"
+date: '2022-10-03'
+output:
+  html_document:
+    df_print: paged
+---
+
+# ___Outline___
+
+For the provided shot coordinate and outcome dataset, determine the effective field goal percentage
+and percentage of team shots attempted (shot distribution) within the following shot zones: Two Point 
+(2PT), Non Corner 3 (NC3) and Corner 3 (C3).
+
+Read the outcome data into R via the read.csv function and look at the first few rows.
+
+```{r displaying the working directory, include = FALSE}
+getwd()
+setwd("/Users/azizf/OneDrive/Documents")
+```
+
+
+```{r loading and importing libraries, collapse = TRUE}
+library("tidyverse")
+library("ggplot2")
+library("lubridate")
+library("dplyr")
+```
+
+
+```{r loading and uploading the data, collapse = TRUE}
+shotData <- read.csv("shots_data.csv")
+```
+
+
+```{r looking at the data and its structure , collapse = TRUE}
+head(shotData)
+str(shotData)
+```
+
+Convert the fgmade column to a numeric type
+
+```{r (Convert fgmade to numeric), collapse = TRUE}
+shotData$fgmade <- as.numeric(shotData$fgmade)
+str(shotData)
+```
+
+Calculate the distance from the (0,0) center of the hoop to where the shots were taken 
+
+```{r calculating shot distance , collapse = TRUE}
+shotData <- shotData %>%
+  mutate(
+    shot_distance = sqrt((x-0)^2 + (y-0)^2)
+    )
+```
+
+Create a new column for missed (0) and made (1) shots as characters
+
+```{r creating make and miss column , collapse = TRUE}
+shotData <- shotData %>%
+  tibble() %>%
+  mutate(
+    shot_outcome = recode_factor(factor(fgmade),
+      "0" = "Miss", 
+      "1" = "Make"
+      )
+  )
+```
+
+Use the case_when function to do if-elif-else statements through mutate.
+For all “Non Corner” 3’s (where Y > 7.8), the 3PT line is 23.75 ft from the center of the hoop
+For all “Corner” 3’s (where Y <= 7.8), the 3PT line is 22 feet from the court’s Y-axis at all points
+For all other coordinates, the shots taken are 2 pointers. 
+
+```{r using mutliple conditions statements}
+shotData <- shotData %>%
+  mutate(
+    shot_zone = case_when(y <= 7.8 & x <= -22 ~ "Corner 3",
+                          shot_distance >= 23.75 & y > 7.8 ~ "Non Corner 3",
+                          TRUE ~ "Two Pointer"
+    )
+)
+head(shotData)
+```
+
+shot distribution and shot percentage within each shot zone for team A and team B
+
+```{r shot percentage distribution for team A and team B}
+df1 <- shotData %>%
+  group_by(team,shot_zone) %>%
+  summarise(shots_attempted_per_zone = n()) %>%
+  arrange(team,shot_zone)	
+  
+df2 <- shotData %>% 
+  group_by(team) %>% 
+  summarize(total_shots = n())
+
+df1 <- merge(df1, df2, by="team", all.x=T)
+
+df1 %>% mutate(shot_percentage = shots_attempted_per_zone / total_shots)
+```
+We can oberve that both team A and team B have a high 2 point and midrange shooting percentage and a really low shooting percentage
+from corner threes. 
+
+Create a dataframe that consists of the shots made within each zone for Team A and Team B
+
+```{r creating shot made dataframe for each zone for team A and team B, collapse=TRUE}
+df3 <- subset(shotData,fgmade==1)
+df4 <- df3 %>%
+  group_by(team,shot_zone) %>%
+  summarise(shots_made_per_zone = n()) %>%
+  arrange(team,shot_zone)
+
+df4
+```
+
+Calculate the effective field goald percentage for Team A and Team B
+
+```{r eFG% for Team A and Team B}
+#Get the shot made within each zone as a vector
+FGM <- df4$shots_made_per_zone
+#get the shot attempted within each zone as a vector
+FGA <- df1$shots_attempted_per_zone
+
+# eFG% for both Team A and Team B
+EFG_team_A <- ((FGM[1] + FGM[2] + FGM[3]) + (0.5 * FGM[1]*FGM[2])) / (FGA[1] + FGA[2] + FGA[3])
+cat("The eFG% of Team A is: ", EFG_team_A,"\n")
+
+EFG_team_B <- ((FGM[4] + FGM[5] + FGM[6]) + (0.5 * FGM[4]*FGM[5])) / (FGA[4] + FGA[5] + FGA[6])
+
+cat("The eFG% of team B is: ", EFG_team_B)
+```
+
